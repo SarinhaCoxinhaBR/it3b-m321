@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: batch-writer
+  main:
+    # Kein Webserver: der Dienst hat keine HTTP-Schnittstelle und damit
+    # auch keinen Port, den man veröffentlichen könnte.
+    web-application-type: none
+    # Ohne Webserver hält nur der Listener den Prozess am Leben. Damit
+    # beendet sich der Dienst auch dann nicht, wenn RabbitMQ kurz fehlt.
+    keep-alive: true
+  datasource:
+    # Im Docker-Netz heisst die Datenbank "postgres". Beim Start ausserhalb
+    # von Docker greifen die Vorgabewerte.
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:chat}
+    username: ${POSTGRES_USER:chat}
+    password: ${POSTGRES_PASSWORD:chat}
+    hikari:
+      # Ein Listener schreibt, mehr Verbindungen braucht es nicht.
+      maximum-pool-size: 3
+      # Ist die Datenbank weg, scheitert ein Versuch nach 3 s statt nach
+      # 30 s. So merkt der batch-writer schnell, wann sie wieder da ist.
+      connection-timeout: 3000
+      validation-timeout: 2000
+      data-source-properties:
+        # Ohne diese Option schickt der Treiber jede Zeile eines Batch
+        # einzeln über die Leitung. Mit ihr baut er mehrzeilige INSERTs.
+        reWriteBatchedInserts: true
+        # Eine hängende Verbindung blockiert den Listener höchstens 30 s.
+        socketTimeout: 30
+  sql:
+    init:
+      # schema.sql bei jedem Start ausführen. Es enthält nur IF NOT EXISTS,
+      # vorhandene Daten bleiben also unangetastet.
+      mode: always
+  rabbitmq:
+    # Im Docker-Netz heisst der Broker "rabbitmq".
+    host: ${RABBITMQ_HOST:localhost}
+    port: 5672
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+# Eigene Werte des batch-writer, Begründung in docs/spec-batch-writer.md 3.1 und 3.2.
+batch-writer:
+  # Höchstens so viele Nachrichten pro Paket. Zugleich der Prefetch.
+  batch-size: ${BATCH_WRITER_BATCH_SIZE:500}
+  # Spätestens nach dieser Zeit wird geschrieben, auch wenn das Paket nicht voll ist.
+  batch-timeout-ms: ${BATCH_WRITER_BATCH_TIMEOUT_MS:200}
+  # Pause zwischen zwei Versuchen, solange die Datenbank nicht erreichbar ist.
+  retry-delay-ms: ${BATCH_WRITER_RETRY_DELAY_MS:2000}
+
+logging:
+  level:
+    # INFO reicht: eine Zeile pro Paket, nicht eine pro Nachricht.
+    ch.benedict.m321: INFO
