@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat-App — Architektur (M321)</title>
+<style>
+  :root{
+    /* Palette — a chosen warm grey-green neutral + one deep-emerald accent.
+       Retune the accent per subject; keep ONE accent, semantic status hues separate. */
+    --paper:#F6F7F4; --card:#FFFFFF; --ink:#0E1512; --muted:#5A625C; --faint:#8A928B;
+    --hair:#E3E7E1; --hair-2:#EDF0EB;
+    --accent:#0C6E48; --accent-soft:#E7F1EB; --accent-ink:#0A5638;
+    /* semantic status (NOT the accent): neutral / info / good / bad / warn */
+    --draft:#7A827C; --sent:#2A5D9F; --paid:#0C6E48; --cancel:#B23A3A; --lock:#9A6B08;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","SFMono-Regular",Menlo,"Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  .doc{background:var(--paper);color:var(--ink);font-family:var(--sans);
+    font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;padding:0 20px 120px}
+  .doc :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  .wrap{max-width:880px;margin:0 auto}
+  .measure{max-width:66ch}
+
+  /* sticky top bar + anchor nav */
+  .topbar{position:sticky;top:0;z-index:20;background:rgba(246,247,244,.86);
+    backdrop-filter:saturate(1.2) blur(8px);border-bottom:1px solid var(--hair);margin:0 -20px 0;padding:12px 20px}
+  .topbar .wrap{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .brand{font-weight:680;letter-spacing:-.01em;font-size:15px;display:flex;align-items:center;gap:9px}
+  .brand .mk{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;
+    background:var(--accent);color:#fff;font-size:12px;font-weight:700}
+  nav.toc{display:flex;gap:2px;flex-wrap:wrap;margin-left:auto;font-size:12.5px}
+  nav.toc a{color:var(--muted);text-decoration:none;padding:5px 9px;border-radius:6px;
+    font-variant:all-small-caps;letter-spacing:.04em;font-weight:600}
+  nav.toc a:hover{color:var(--accent-ink);background:var(--accent-soft)}
+
+  /* hero */
+  header.hero{padding:56px 0 30px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--accent-ink);font-weight:600;margin:0 0 14px}
+  h1{font-size:40px;line-height:1.08;letter-spacing:-.022em;font-weight:720;margin:0;text-wrap:balance}
+  .sub{color:var(--muted);font-size:18px;margin:16px 0 0;max-width:60ch}
+  .metaline{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px;font-size:13px;color:var(--muted)}
+  .chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--hair);
+    background:var(--card);border-radius:999px;padding:5px 12px;font-weight:500}
+  .chip .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .chip.info .dot{background:var(--sent)}
+
+  /* sections */
+  section{padding:40px 0;border-top:1px solid var(--hair);scroll-margin-top:64px}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;margin:0 0 8px;display:flex;align-items:center;gap:10px}
+  .kicker .n{color:var(--accent);font-weight:700}
+  h2{font-size:26px;letter-spacing:-.018em;font-weight:700;margin:0 0 6px;text-wrap:balance}
+  h3{font-size:16px;font-weight:680;letter-spacing:-.005em;margin:26px 0 10px}
+  p{margin:12px 0}
+  .lead{color:var(--muted);font-size:17px;margin-top:4px}
+  strong{font-weight:660}
+  a.inl{color:var(--accent-ink);text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px}
+  code{font-family:var(--mono);font-size:.88em;background:var(--hair-2);padding:1px 6px;border-radius:5px}
+  .mono{font-family:var(--mono)}
+
+  /* cards */
+  .cards{display:grid;gap:14px}
+  @media(min-width:620px){.cards.two{grid-template-columns:1fr 1fr}}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:18px}
+  .card h4{margin:0 0 4px;font-size:15px;font-weight:680}
+  .card p{margin:6px 0 0;font-size:14px;color:var(--muted)}
+
+  /* decision log: one .decision per choice; mark the taken option .pick */
+  .decision{background:var(--card);border:1px solid var(--hair);border-radius:12px;padding:16px 18px;margin:12px 0}
+  .decision .q{display:flex;gap:12px;align-items:baseline}
+  .decision .q .id{font-family:var(--mono);font-weight:700;color:var(--accent);font-size:13px;flex:none;width:22px}
+  .decision .q h4{margin:0;font-size:15.5px;font-weight:680}
+  .opts{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0 0 34px}
+  .opt{font-size:12.5px;border:1px solid var(--hair);border-radius:999px;padding:4px 11px;color:var(--faint);
+    display:inline-flex;align-items:center;gap:6px;background:var(--paper)}
+  .opt.pick{color:var(--accent-ink);border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+  .opt.pick::before{content:"✓";font-weight:700;font-size:11px}
+  .opt::before{content:"○";color:#C4CBC4;font-size:11px}
+  .note{margin:10px 0 0 34px;font-size:13px;color:var(--muted);border-left:2px solid var(--accent);padding-left:12px}
+
+  /* status pills (semantic, reusable) */
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;font-weight:600;
+    letter-spacing:.02em;padding:3px 9px;border-radius:6px;text-transform:uppercase;white-space:nowrap}
+  .p-draft{color:var(--draft);background:#F0F2EF;border:1px solid #DFE3DE}
+  .p-info{color:var(--sent);background:#EAF1FA;border:1px solid #D3E1F2}
+  .p-good{color:var(--paid);background:var(--accent-soft);border:1px solid #CDE5D8}
+  .p-bad{color:var(--cancel);background:#FaEDED;border:1px solid #F1D6D6}
+  .p-warn{color:var(--lock);background:#FaF3E0;border:1px solid #EFE1BE}
+
+  /* state-machine / flow: horizontal, scrolls on narrow screens */
+  .flowwrap{overflow-x:auto;padding:6px 2px 14px;margin-top:12px}
+  .flow{display:flex;align-items:center;gap:8px;min-width:640px}
+  .node{border:1.5px solid var(--hair);background:var(--card);border-radius:10px;padding:10px 14px;text-align:center;flex:none}
+  .node .st{font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:.02em}
+  .node .cap{font-size:11px;color:var(--muted);margin-top:2px}
+  .node.info{border-color:#D3E1F2;background:#F5F9FE}
+  .node.good{border-color:#CDE5D8;background:#F3FaF6}
+  .node.bad{border-color:#F1D6D6;background:#FDF6F6}
+  .arrow{display:flex;flex-direction:column;align-items:center;color:var(--muted);flex:none;min-width:96px}
+  .arrow .lab{font-family:var(--mono);font-size:10.5px;color:var(--accent-ink);margin-bottom:2px;text-align:center;line-height:1.25}
+  .arrow .ln{width:100%;height:0;border-top:1.5px solid #C4CBC4;position:relative}
+  .arrow .ln::after{content:"";position:absolute;right:-1px;top:-4px;border:4px solid transparent;border-left-color:#C4CBC4}
+
+  /* dark code / pre block */
+  pre.code{background:#0E1512;color:#E8ECE7;border-radius:12px;padding:18px;overflow-x:auto;
+    font-family:var(--mono);font-size:13px;line-height:1.65;margin:14px 0}
+  pre.code .k{color:#7FD8A6} pre.code .c{color:#8A928B} pre.code .a{color:#F0C674}
+
+  /* numbered steps (real sequence only) */
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0;display:grid;gap:9px}
+  ol.steps li{counter-increment:s;position:relative;padding:12px 14px 12px 46px;background:var(--card);
+    border:1px solid var(--hair);border-radius:10px;font-size:14px}
+  ol.steps li::before{content:counter(s);position:absolute;left:12px;top:11px;width:22px;height:22px;
+    background:var(--accent);color:#fff;border-radius:6px;display:grid;place-items:center;
+    font-family:var(--mono);font-size:12px;font-weight:700}
+
+  /* table with evolve/new tags */
+  .tablewrap{overflow-x:auto;margin:14px 0;border:1px solid var(--hair);border-radius:12px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px;background:var(--card)}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--hair-2);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600;background:#FBFCFA}
+  tr:last-child td{border-bottom:none}
+  td .mono{font-size:12.5px;color:var(--accent-ink)}
+  .tag{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;text-transform:uppercase;letter-spacing:.03em}
+  .tag.a{color:var(--sent);background:#EAF1FA} .tag.b{color:var(--accent-ink);background:var(--accent-soft)}
+
+  /* callout (accent = normal, warn = amber left edge) */
+  .callout{border:1px solid var(--hair);border-left:3px solid var(--accent);background:var(--card);
+    border-radius:0 12px 12px 0;padding:16px 18px;margin:16px 0}
+  .callout.warn{border-left-color:var(--lock)}
+  .callout .lb{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--accent-ink);margin:0 0 6px}
+  .callout.warn .lb{color:var(--lock)}
+  .callout p{margin:6px 0 0;font-size:14px;color:var(--ink)}
+
+  /* phases (real ordered plan) */
+  .phase{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--hair-2)}
+  .phase:last-child{border-bottom:none}
+  .phase .idx{font-family:var(--mono);font-weight:700;color:var(--accent);font-size:15px;flex:none;width:28px}
+  .phase h4{margin:0;font-size:15px;font-weight:680}
+  .phase p{margin:4px 0 0;font-size:13.5px;color:var(--muted)}
+  .phase .now{font-family:var(--mono);font-size:10px;font-weight:700;color:#fff;background:var(--accent);padding:2px 7px;border-radius:5px;text-transform:uppercase;margin-left:8px;vertical-align:middle}
+  .phase .later{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--faint);background:#EEF1EC;padding:2px 7px;border-radius:5px;text-transform:uppercase;margin-left:8px;vertical-align:middle}
+
+  /* tick list */
+  ul.tick{list-style:none;padding:0;margin:12px 0;display:grid;gap:8px}
+  ul.tick li{position:relative;padding-left:26px;font-size:14.5px}
+  ul.tick li::before{content:"";position:absolute;left:4px;top:8px;width:8px;height:8px;border-radius:2px;background:var(--accent);transform:rotate(45deg)}
+  ul.tick.muted li::before{background:#C4CBC4}
+
+  footer.end{padding:44px 0 0;border-top:1px solid var(--hair);color:var(--faint);font-size:13px}
+  .divlabel{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+</style>
+<style>
+  /* Diagramm-Container fuer Mermaid */
+  .diagram{background:var(--card);border:1px solid var(--hair);border-radius:12px;
+    padding:24px 18px;margin:16px 0;overflow-x:auto}
+  .diagram .mermaid{display:flex;justify-content:center;min-width:min-content}
+  .diagram .mermaid svg{max-width:100%;height:auto}
+  .figcap{font-size:12.5px;color:var(--faint);font-family:var(--mono);
+    letter-spacing:.03em;margin:8px 0 0;text-align:center}
+</style>
+<script src="mermaid.min.js"></script>
+</head>
+<body>
+<div class="doc">
+
+  <div class="topbar"><div class="wrap">
+    <span class="brand"><span class="mk">◆</span>M321&nbsp;·&nbsp;Chat-App</span>
+    <nav class="toc" aria-label="Abschnitte">
+      <a href="#ueberblick">Überblick</a><a href="#nachricht">Nachrichtenfluss</a>
+      <a href="#schreiben">Schreibpfad</a><a href="#rueckstau">Rückstau</a><a href="#login">Login</a>
+      <a href="#entscheide">Entscheide</a><a href="#offen">Offene Punkte</a>
+    </nav>
+  </div></div>
+
+  <div class="wrap">
+
+    <header class="hero">
+      <p class="eyebrow">Architektur · Modul M321 · Klasse IT3b</p>
+      <h1>Chat-App — verteilte Architektur</h1>
+      <p class="sub">Wie die sechs Container zusammenspielen, welcher Weg eine Nachricht nimmt
+      und warum genau ein Port nach aussen offen ist.</p>
+      <div class="metaline">
+        <span class="chip"><span class="dot"></span>Java 21 · Spring Boot 3</span>
+        <span class="chip info"><span class="dot"></span>Begleitdokument zu PLANUNG.md</span>
+        <span class="chip"><span class="dot"></span>Nur Port 8080 offen</span>
+        <span class="chip"><span class="dot"></span>Gebündelte Schreibzugriffe</span>
+        <span class="chip"><span class="dot"></span>Ein Schreiber, eine Instanz</span>
+      </div>
+    </header>
+
+    <section id="ueberblick">
+      <p class="kicker"><span class="n">01</span> Überblick</p>
+      <h2>Die Container und ihr Netzwerk</h2>
+      <p class="lead measure">Alles läuft in <code>docker-compose</code> im internen Netzwerk
+      <code>chat-net</code>. Die Services finden einander über ihren Service-Namen als Hostname —
+      das übernimmt der DNS von Docker. Nur das Gateway veröffentlicht einen Port auf dem Host.</p>
+
+      <div class="diagram">
+<pre class="mermaid">
+flowchart TB
+  browser["Browser<br/><small>React-App</small>"]
+  fx["JavaFX-Client<br/><small>läuft auf dem Host</small>"]
+
+  subgraph net["Docker-Netzwerk &nbsp;chat-net&nbsp; — von aussen nicht erreichbar"]
+    direction TB
+    gw["gateway · nginx<br/><small>einziger offener Port</small>"]
+    chat["chat-service<br/><small>REST · SSE · JWT-Prüfung</small>"]
+    batch["batch-service<br/><small>einziger Schreiber</small>"]
+    kc["keycloak<br/><small>Login / OIDC</small>"]
+    mq["rabbitmq<br/><small>Fanout-Exchange</small>"]
+    db[("postgres<br/><small>Nachrichten</small>")]
+
+    gw -->|"/api · /stream"| chat
+    gw -->|"/auth"| kc
+    chat -->|"Token prüfen (JWKS)"| kc
+    chat -->|"publish"| mq
+    chat -.->|"Verlauf LESEN"| db
+    mq -.->|"Queue chat.live<br/>→ SSE"| chat
+    mq -->|"Queue chat.persist"| batch
+    batch ==>|"Batch-INSERT<br/>500 Zeilen"| db
+  end
+
+  browser -->|"localhost:8080"| gw
+  fx -->|"localhost:8080"| gw
+
+  classDef edge fill:#EAF1FA,stroke:#D3E1F2,color:#0E1512;
+  classDef svc fill:#FFFFFF,stroke:#CDE5D8,color:#0E1512;
+  classDef infra fill:#F0F2EF,stroke:#DFE3DE,color:#0E1512;
+  class browser,fx edge;
+  class gw,chat,batch svc;
+  class kc,mq,db infra;
+</pre>
+      </div>
+      <p class="figcap">Abb. 1 — Container-Übersicht. Fett: der einzige Schreibpfad in die Datenbank.</p>
+
+      <h3>Ports</h3>
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>Service</th><th>Compose</th><th>Erreichbar von</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">gateway</td><td><code>ports: "8080:80"</code></td><td>Host <span class="tag a">offen</span></td></tr>
+          <tr><td class="mono">chat-service</td><td><code>expose: 8080</code></td><td>nur <code>chat-net</code></td></tr>
+          <tr><td class="mono">batch-service</td><td>—</td><td>nur <code>chat-net</code></td></tr>
+          <tr><td class="mono">keycloak</td><td><code>expose: 8080</code></td><td>nur <code>chat-net</code></td></tr>
+          <tr><td class="mono">rabbitmq</td><td><code>expose: 5672</code></td><td>nur <code>chat-net</code></td></tr>
+          <tr><td class="mono">postgres</td><td><code>expose: 5432</code></td><td>nur <code>chat-net</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="callout">
+        <p class="lb">Prüfungsstoff</p>
+        <p><code>expose</code> macht einen Port nur im Docker-Netz sichtbar, <code>ports</code>
+        veröffentlicht ihn auf dem Host. In diesem Projekt gibt es genau einen
+        <code>ports</code>-Eintrag — sonst ist die Vorgabe verletzt.</p>
+      </div>
+    </section>
+
+    <section id="nachricht">
+      <p class="kicker"><span class="n">02</span> Nachrichtenfluss</p>
+      <h2>Von «Senden» bis auf alle Bildschirme</h2>
+      <p class="lead measure">Der wichtigste Ablauf des Moduls. Er zeigt die zwei Aufgaben des Brokers:
+      <b>verteilen</b> (bei zwei Instanzen sieht sonst niemand die Nachrichten der anderen) und
+      <b>entkoppeln</b> (die Anzeige wartet nicht auf die Datenbank).</p>
+
+      <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant C as Client A
+  participant G as gateway
+  participant A as chat-service<br/>Instanz A
+  participant MQ as rabbitmq
+  participant B as chat-service<br/>Instanz B
+  participant C2 as Client B
+  participant BS as batch-service
+  participant DB as postgres
+
+  C->>G: POST /api/messages + Bearer-Token
+  G->>A: weiterleiten
+  A->>A: Token prüfen, UUID + Zeitstempel
+  A->>MQ: publish auf Exchange chat.messages
+  A-->>C: 202 Accepted
+  Note over MQ: Fanout:<br/>je Queue eine Kopie
+  MQ-->>A: chat.live.A
+  MQ-->>B: chat.live.B
+  MQ-->>BS: chat.persist
+  A-->>C: SSE
+  B-->>C2: SSE
+  Note over BS: sammeln:<br/>500 oder 200 ms
+  BS->>DB: EIN Batch-INSERT, 500 Zeilen
+  BS->>MQ: ACK für alle 500
+</pre>
+      </div>
+      <p class="figcap">Abb. 2 — Senden einer Nachricht. Anzeige und Speichern laufen getrennt.</p>
+
+      <div class="callout">
+        <p class="lb">Der Kernpunkt</p>
+        <p>Am selben Exchange hängen zwei Arten von Queues mit völlig verschiedenem Zweck:
+        <code>chat.live.&lt;instanz&gt;</code> ist flüchtig und dient der Anzeige,
+        <code>chat.persist</code> ist dauerhaft und dient dem Speichern. Der
+        <code>chat-service</code> berührt die Datenbank beim Senden gar nicht mehr.</p>
+      </div>
+    </section>
+
+    <section id="schreiben">
+      <p class="kicker"><span class="n">03</span> Schreibpfad</p>
+      <h2>Warum gebündelt statt einzeln</h2>
+      <p class="lead measure">Gedankenexperiment: 100 000 Nachrichten pro Sekunde. Einzelne
+      <code>INSERT</code>-Anweisungen sind dann kein Datenbankproblem mehr, sondern ein
+      Architekturfehler.</p>
+
+      <h3>Das Problem</h3>
+      <p class="measure">Jede einzelne <code>INSERT</code>-Anweisung kostet einen Netzwerk-Roundtrip
+      zur Datenbank, einen Parse-Vorgang und einen eigenen Transaktions-Commit. Bei 100 000 pro
+      Sekunde ist die Datenbank lange vor der Anwendung am Anschlag — und der Nutzer wartet beim
+      Senden mit.</p>
+
+      <h3>Die Lösung</h3>
+      <p class="measure">Der <code>batch-service</code> sammelt, was aus <code>chat.persist</code>
+      hereinkommt, und schreibt in Paketen.</p>
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>Regel</th><th>Wert</th><th>Warum</th></tr></thead>
+        <tbody>
+          <tr><td>Paketgrösse</td><td class="mono">500 Nachrichten</td><td>Ein <code>INSERT</code> mit 500 Zeilen statt 500 Anweisungen</td></tr>
+          <tr><td>Zeitlimit</td><td class="mono">200 ms</td><td>Damit auch bei wenig Betrieb nichts liegen bleibt</td></tr>
+          <tr><td>Ausgelöst durch</td><td class="mono">was zuerst eintritt</td><td>Voll oder Zeit abgelaufen — dann wird geschrieben</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout">
+        <p class="lb">Rechenbeispiel</p>
+        <p>100 000 ÷ 500 = <b>200 Schreibvorgänge pro Sekunde</b> statt 100 000. Faktor 500
+        weniger Roundtrips, bei identischer Datenmenge.</p>
+      </div>
+
+      <h3>Wie das konkret gebaut wird</h3>
+      <ol class="steps">
+        <li>Spring AMQP bündelt Consumer-seitig: <code>setConsumerBatchEnabled(true)</code>,
+        <code>setBatchSize(500)</code>, <code>setReceiveTimeout(200)</code>. Die Listener-Methode
+        bekommt eine <code>List&lt;Message&gt;</code> — genau die Semantik «500 Stück oder 200 ms».</li>
+        <li>Geschrieben wird mit <code>JdbcTemplate.batchUpdate(…)</code>. In der JDBC-URL muss
+        <code>reWriteBatchedInserts=true</code> stehen, sonst schickt der PostgreSQL-Treiber die
+        Zeilen trotzdem einzeln über die Leitung.</li>
+        <li><b>Prefetch ≥ Paketgrösse.</b> Steht <code>prefetch</code> auf 250, kann der Consumer
+        nie 500 Nachrichten sammeln und läuft dauernd ins Zeitlimit.</li>
+      </ol>
+
+      <h3>Was schiefgehen kann</h3>
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>Risiko</th><th>Antwort</th></tr></thead>
+        <tbody>
+          <tr><td>Absturz mitten im Paket → Nachrichten weg</td><td><b>ACK erst nach dem Commit.</b> Ohne ACK stellt RabbitMQ das ganze Paket erneut zu.</td></tr>
+          <tr><td>Erneute Zustellung → Nachricht doppelt</td><td>Die UUID kommt vom <code>chat-service</code> und ist Primärschlüssel. <code>ON CONFLICT (id) DO NOTHING</code> verwirft die Dublette.</td></tr>
+          <tr><td>Reihenfolge</td><td>Zeitstempel wird im <code>chat-service</code> gesetzt, nicht per <code>DEFAULT now()</code> — sonst hätten 500 Nachrichten dieselbe Zeit.</td></tr>
+          <tr><td>Datenbank kommt nicht nach</td><td><code>chat.persist</code> wächst — <b>sichtbar</b> in der Management-UI. Genau das ist die Lehrstunde zu Backpressure.</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout warn">
+        <p class="lb">Der Preis, ehrlich benannt</p>
+        <p>Eine gesendete Nachricht steht bis zu 200 ms später in der Datenbank. Für die Anzeige
+        spielt das keine Rolle — der SSE-Weg läuft unabhängig und ist sofort da. Nur wer in genau
+        diesem Moment den Verlauf neu lädt, sieht die letzten Millisekunden noch nicht.</p>
+      </div>
+
+      <div class="callout warn">
+        <p class="lb">Einordnung der Zahl 100 000/s</p>
+        <p>Bei dieser Last wäre nicht mehr die Datenbank der Engpass, sondern der Broker und das
+        Verteilen an die SSE-Verbindungen. Das Bündeln löst die Schreiblast — es macht die App
+        nicht automatisch skalierbar.</p>
+      </div>
+    </section>
+
+    <section id="rueckstau">
+      <p class="kicker"><span class="n">04</span> Rückstau</p>
+      <h2>Wenn der Schreiber nicht nachkommt</h2>
+      <p class="lead measure">Der <code>batch-service</code> läuft <b>einmal</b>. Eine Instanz ist
+      damit die Obergrenze für den Durchsatz. Wird mehr gesendet als geschrieben, wächst die
+      Queue <code>chat.persist</code> — das ist kein Fehler, das ist die Aufgabe einer Queue.
+      Drei Fälle muss man aber auseinanderhalten.</p>
+
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>Fall</th><th>Was passiert</th><th>Was wir tun</th></tr></thead>
+        <tbody>
+          <tr><td><b>Kurzer Rückstau</b><br><span class="mono">eine Lastspitze</span></td>
+              <td>Queue wächst und leert sich wieder</td>
+              <td>Nichts. Genau dafür ist die Queue da.</td></tr>
+          <tr><td><b>Dauerhafter Rückstau</b><br><span class="mono">Datenbank langsam oder weg</span></td>
+              <td>Queue wächst, bis der Speicher des Brokers voll ist</td>
+              <td>RabbitMQ bremst von sich aus die Absender aus (<i>Flow Control</i>): der
+              <code>publish</code> blockiert, <code>POST /api/messages</code> antwortet nach einem
+              Zeitlimit mit <code>503</code>. Der Chat nimmt <b>sichtbar</b> nichts mehr an.</td></tr>
+          <tr><td><b>Giftnachricht</b><br><span class="mono">lässt sich nie schreiben</span></td>
+              <td>Kein ACK, endlose erneute Zustellung, die Queue kommt nie leer</td>
+              <td>Quorum-Queue mit <code>x-delivery-limit: 3</code>. Nach drei Versuchen wandert
+              die Nachricht in die Dead-Letter-Queue <code>chat.persist.dlq</code>.</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout warn">
+        <p class="lb">Bewusst nicht gewählt</p>
+        <p><code>x-max-length</code> mit «ältestes wegwerfen» auf <code>chat.persist</code>. Das
+        begrenzt zwar den Speicher, löscht dafür still Nachrichten aus dem Verlauf — und niemand
+        merkt es. Ein Chat, der sichtbar keine neuen Nachrichten mehr annimmt, ist besser als
+        einer, dessen Verlauf lautlos Löcher bekommt.</p>
+      </div>
+
+      <h3>Dieselbe Nachricht, zwei Queues, gegensätzliche Regeln</h3>
+      <div class="tablewrap">
+      <table>
+        <thead><tr><th>Queue</th><th>Wofür</th><th>Bei Überlauf</th></tr></thead>
+        <tbody>
+          <tr><td><span class="mono">chat.persist</span></td>
+              <td>den Verlauf <b>speichern</b></td>
+              <td><b>Nichts wegwerfen.</b> Lieber blockieren. Dauerhaft, Quorum-Queue, DLQ für
+              Giftnachrichten.</td></tr>
+          <tr><td><span class="mono">chat.live.&lt;instanz&gt;</span></td>
+              <td>jetzt <b>anzeigen</b></td>
+              <td><b>Wegwerfen ist richtig.</b> <code>x-max-length: 1000</code> und
+              <code>x-message-ttl: 30000</code>. Eine 30 Sekunden alte «Live»-Nachricht ist
+              wertlos — wer sie verpasst hat, holt sie mit <code>GET /api/messages</code> nach.</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="callout">
+        <p class="lb">Der Punkt, um den es hier geht</p>
+        <p>Wie man mit Überlauf umgeht, hängt nicht an der Nachricht, sondern daran, <b>wozu</b>
+        man sie gerade braucht. Dieselben Bytes, zwei Queues, entgegengesetzte Regeln.</p>
+      </div>
+
+      <div class="callout warn">
+        <p class="lb">Ein Haken, der zum Bündeln gehört</p>
+        <p><code>x-delivery-limit</code> zählt pro Nachricht — schiefgehen kann aber nur das ganze
+        Paket. Eine einzige kaputte Nachricht lässt alle 500 scheitern und schickt am Ende alle 500
+        in die DLQ. Antwort: schlägt ein Paket fehl, schreibt der <code>batch-service</code> dieses
+        eine Paket <b>einmalig Zeile für Zeile</b>. Dann scheitert nur die wirklich kaputte
+        Nachricht, die restlichen 499 sind gespeichert.</p>
+      </div>
+    </section>
+
+    <section id="login">
+      <p class="kicker"><span class="n">05</span> Login</p>
+      <h2>Anmeldung über Keycloak</h2>
+      <p class="lead measure">Authorization Code Flow mit PKCE. Der Browser spricht Keycloak über
+      das Gateway an, das Backend prüft die Signatur direkt im Docker-Netz.</p>
+
+      <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as Browser<br/>React
+  participant G as gateway
+  participant K as keycloak
+  participant S as chat-service
+
+  U->>G: GET / (kein Token)
+  U->>G: Weiterleitung /auth/.../auth
+  G->>K: weiterleiten
+  K-->>U: Login-Maske
+  U->>K: Benutzer + Passwort
+  K-->>U: Redirect mit code
+  U->>K: code gegen Token tauschen
+  K-->>U: Access-Token (JWT)
+  U->>G: GET /api/messages + Bearer
+  G->>S: weiterleiten
+  S->>K: JWKS holen (intern, http://keycloak:8080)
+  S->>S: Signatur und issuer prüfen
+  S-->>U: Nachrichten
+</pre>
+      </div>
+      <p class="figcap">Abb. 3 — OIDC-Login. Schritt 12 ist die Stelle, an der es erfahrungsgemäss klemmt.</p>
+    </section>
+
+    <section id="entscheide">
+      <p class="kicker"><span class="n">06</span> Entscheide</p>
+      <h2>Was gewählt wurde — und was nicht</h2>
+
+      <div class="decision">
+        <div class="q"><span class="id">1</span><h4>Web-Oberfläche</h4></div>
+        <div class="opts">
+          <span class="opt pick">React als eigenes UI-Modul + SSE</span>
+          <span class="opt">Thymeleaf + SSE</span>
+          <span class="opt">Vaadin Flow</span>
+        </div>
+        <p class="note">Das Modul lehrt Microservice-Architektur. Ein server-gerendertes Template
+        im Backend hätte UI und Backend zusammengezogen — genau das Gegenteil der Lernaufgabe.</p>
+      </div>
+
+      <div class="decision">
+        <div class="q"><span class="id">2</span><h4>Message Broker</h4></div>
+        <div class="opts">
+          <span class="opt pick">RabbitMQ</span>
+          <span class="opt">Apache Kafka</span>
+          <span class="opt">ActiveMQ Artemis</span>
+        </div>
+        <p class="note">Die Management-UI macht Queues sichtbar, das Vokabular (Exchange, Queue,
+        ACK) ist genau der Lehrplan, und Senden ist eine Zeile Code. Kafka wäre industriell
+        relevanter für Datenströme, bringt aber Offsets und Partitionen als eigenes Kapitel mit.</p>
+      </div>
+
+      <div class="decision">
+        <div class="q"><span class="id">3</span><h4>Zugang für den JavaFX-Client</h4></div>
+        <div class="opts">
+          <span class="opt pick">nginx-Gateway als einziger Einstiegspunkt</span>
+          <span class="opt">Spring Cloud Gateway</span>
+          <span class="opt">zweiter offener Port</span>
+        </div>
+        <p class="note">Beide Clients gehen durch dieselbe Tür. Damit bleibt «nur die Web-App ist
+        über Localhost erreichbar» eingehalten, und die Klasse lernt Reverse Proxy als Konzept.</p>
+      </div>
+
+      <div class="decision">
+        <div class="q"><span class="id">4</span><h4>Schreibpfad in die Datenbank</h4></div>
+        <div class="opts">
+          <span class="opt pick">batch-service bündelt, 500 / 200 ms</span>
+          <span class="opt">chat-service schreibt einzeln</span>
+          <span class="opt">Sammelpuffer im chat-service</span>
+        </div>
+        <p class="note">Einzeln schreiben ist genau der Fall, den die Vorgabe ausschliesst. Ein
+        Puffer im <code>chat-service</code> wäre bei mehreren Instanzen mehrfach vorhanden und
+        bei einem Neustart verloren — in der Queue ist er dauerhaft.</p>
+      </div>
+
+      <div class="decision">
+        <div class="q"><span class="id">5</span><h4>Service-Schnitt</h4></div>
+        <div class="opts">
+          <span class="opt pick">3 Services wie in der Skizze</span>
+          <span class="opt">4–5 Services</span>
+          <span class="opt">2 Services</span>
+        </div>
+        <p class="note">Genug Verteilung zum Lernen, ohne dass jedes Feature durch vier
+        Services wandern muss.</p>
+      </div>
+
+      <div class="decision">
+        <div class="q"><span class="id">6</span><h4>Überlauf von <code>chat.persist</code></h4></div>
+        <div class="opts">
+          <span class="opt pick">blockieren, nichts wegwerfen · DLQ nur für Giftnachrichten</span>
+          <span class="opt">x-max-length, ältestes wegwerfen</span>
+          <span class="opt">unbegrenzt laufen lassen</span>
+        </div>
+        <p class="note">Eine Nachricht in <code>chat.persist</code> <b>ist</b> der Verlauf. Ein
+        Verlauf mit stillen Löchern ist schlimmer als ein Chat, der sichtbar streikt. Unbegrenzt
+        laufen lassen fällt weg, weil mit dem Broker auch der Live-Chat ausfällt.</p>
+      </div>
+
+      <div class="decision">
+        <div class="q"><span class="id">7</span><h4>Raumverwaltung</h4></div>
+        <div class="opts">
+          <span class="opt pick">Nutzer legt Raum an, lädt per Benutzername ein</span>
+          <span class="opt">Einladung mit Annehmen/Ablehnen</span>
+          <span class="opt">Mitgliedschaften als Keycloak-Gruppen</span>
+        </div>
+        <p class="note">Eingeladen heisst sofort Mitglied — die einfachste Regel, die trägt.
+        Die Mitgliedertabelle liegt bei uns, nicht in Keycloak: Keycloak weiss, <b>wer</b> jemand
+        ist, nicht <b>wo</b> er mitlesen darf.</p>
+      </div>
+    </section>
+
+    <section id="offen">
+      <p class="kicker"><span class="n">07</span> Offene Punkte</p>
+      <h2>Zwei Stolpersteine, bevor gebaut wird</h2>
+
+      <div class="callout warn">
+        <p class="lb">Keycloak-Issuer hinter dem Proxy</p>
+        <p>Der Browser sieht Keycloak als <code>localhost:8080/auth</code>, das Backend intern als
+        <code>keycloak:8080</code>. Stimmen die Werte nicht überein, passt das Feld <code>iss</code>
+        im Token nicht zur erwarteten Issuer-URL und <b>jede</b> Token-Prüfung schlägt fehl.
+        Lösung: <code>KC_HOSTNAME</code> auf die öffentliche URL setzen — und testen.</p>
+      </div>
+
+      <div class="callout warn">
+        <p class="lb">SSE kennt keinen Authorization-Header</p>
+        <p>Das native <code>EventSource</code> im Browser kann keine eigenen Header senden.
+        Varianten: Token als Query-Parameter (landet im Log), ein kurzlebiges Ticket vor dem
+        Verbindungsaufbau, oder SSE über <code>fetch</code>. Noch zu entscheiden.</p>
+      </div>
+
+      <ul class="tick muted">
+        <li>500 / 200 ms sind <b>geraten</b>, nicht gemessen — unter Last nachstellen</li>
+        <li>Einzelweg nach einem fehlgeschlagenen Paket — noch nicht gebaut</li>
+        <li>Eingeladener Benutzername wird vorerst <b>nicht</b> gegen Keycloak geprüft</li>
+        <li>RabbitMQ Management-UI im Unterricht — proxien oder bewusst freigeben</li>
+        <li>Zweite <code>chat-service</code>-Instanz — Teil der Abgabe oder nicht</li>
+        <li>Nachrichtenverlust beim SSE-Reconnect — Verlauf nachladen</li>
+        <li>Raum verlassen, Mitglied entfernen, Raum löschen — noch offen</li>
+        <li>Rollen in Keycloak (<code>user</code>, <code>moderator</code>) — noch nicht festgelegt</li>
+      </ul>
+    </section>
+
+    <footer class="end">
+      <p class="divlabel">M321 · Chat-App · Architektur</p>
+      <p>Begleitdokument zu <code>PLANUNG.md</code>. Wird mit der Planung mitgeführt.</p>
+    </footer>
+
+  </div>
+</div>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    securityLevel: 'loose',
+    theme: 'base',
+    themeVariables: {
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      fontSize: '14px',
+      primaryColor: '#FFFFFF',
+      primaryTextColor: '#0E1512',
+      primaryBorderColor: '#CDE5D8',
+      lineColor: '#5A625C',
+      secondaryColor: '#E7F1EB',
+      tertiaryColor: '#F6F7F4',
+      clusterBkg: '#F6F7F4',
+      clusterBorder: '#DFE3DE',
+      actorBkg: '#FFFFFF',
+      actorBorder: '#CDE5D8',
+      actorTextColor: '#0E1512',
+      signalColor: '#5A625C',
+      signalTextColor: '#0E1512',
+      labelBoxBkgColor: '#E7F1EB',
+      labelBoxBorderColor: '#0C6E48',
+      noteBkgColor: '#E7F1EB',
+      noteBorderColor: '#0C6E48',
+      noteTextColor: '#0A5638',
+      sequenceNumberColor: '#FFFFFF'
+    },
+    flowchart: { curve: 'basis', padding: 18, nodeSpacing: 46, rankSpacing: 58 },
+    sequence: { actorMargin: 46, boxMargin: 12, mirrorActors: false, useMaxWidth: true }
+  });
+</script>
+</body>
+</html>
