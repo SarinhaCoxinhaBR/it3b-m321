@@ -1,0 +1,7 @@
+# Was nie im Build-Kontext eines Images landen soll.
+# .env enthält echte Passwörter, target und .git machen den Build nur langsam.
+.env
+.git
+.idea
+**/target
+**/node_modules
