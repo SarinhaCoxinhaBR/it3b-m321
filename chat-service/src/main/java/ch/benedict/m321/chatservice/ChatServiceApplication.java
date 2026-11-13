@@ -2,6 +2,7 @@ package ch.benedict.m321.chatservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Startpunkt des chat-service.
@@ -11,6 +12,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Nachricht an RabbitMQ weiter.
  */
 @SpringBootApplication
+// Runs the keep-alive in RoomSubscriptions every 15 seconds.
+@EnableScheduling
 public class ChatServiceApplication {
 
     /** Startet Spring. Alles Weitere richten die Konfigurationsklassen ein. */
