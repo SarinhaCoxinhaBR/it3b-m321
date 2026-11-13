@@ -27,6 +27,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+    # No container_name: "docker compose up --scale chat-service=2" (S3) needs
+    # two containers of this service.
     networks:
       - chat-net
 

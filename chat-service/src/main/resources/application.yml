@@ -12,6 +12,13 @@ spring:
 server:
   port: 8080
 
+# Live delivery, see docs/spec-live-zustellung.md.
+chat-service:
+  # Second half of the delivery queue name (chat.delivery.<instance-id>).
+  # Docker sets HOSTNAME to the container id, so every instance gets its own
+  # queue. Outside Docker a random id keeps two instances apart.
+  instance-id: ${HOSTNAME:${random.uuid}}
+
 logging:
   level:
     # Im Unterricht wollen wir jeden Schritt sehen.
