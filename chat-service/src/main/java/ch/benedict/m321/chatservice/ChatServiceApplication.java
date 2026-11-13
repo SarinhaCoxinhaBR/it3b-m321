@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class ChatServiceApplication {
 
+    /** Startet Spring. Alles Weitere richten die Konfigurationsklassen ein. */
     public static void main(String[] args) {
         SpringApplication.run(ChatServiceApplication.class, args);
     }
