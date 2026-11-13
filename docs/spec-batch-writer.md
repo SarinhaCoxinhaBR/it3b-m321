@@ -206,7 +206,8 @@ Kaputtes JSON, falscher Typ, fehlendes oder leeres Pflichtfeld.
 **Verhalten:** `basicReject` ohne Requeue. RabbitMQ legt die Nachricht über die Argumente
 `x-dead-letter-exchange` und `x-dead-letter-routing-key` von `chat.persist` unverändert in
 `chat.dlq` und hängt den Header `x-death` mit Grund und Herkunft an. Die übrigen Nachrichten des
-Pakets werden normal geschrieben.
+Pakets werden normal geschrieben. Im Log steht nur die Art des Fehlers, etwa
+`Body is not valid JSON (JsonParseException)`, nie ein Ausschnitt des Bodys.
 **Begründung:** Ein zweiter Versuch mit denselben Bytes kann nie gelingen. Ohne DLQ würde die
 Nachricht endlos neu zugestellt und die Queue nie leer. Der chat-service hat die
 Dead-Letter-Argumente genau für diesen Fall gesetzt, der batch-writer nutzt sie.
@@ -355,6 +356,7 @@ Die Standardwerte gelten nur beim Start ausserhalb von Docker. Echte Zugangsdate
 | 3 s | `hikari.connection-timeout` | Ist die Datenbank weg, scheitert ein Versuch nach 3 s statt nach 30 s (S7) |
 | 30 s | Treiber-Option `socketTimeout` | Eine hängende Verbindung blockiert den Listener nie länger als 30 s |
 | gebündelte INSERT | Treiber-Option `reWriteBatchedInserts=true` | Ohne sie schickt der Treiber jede Zeile einzeln über die Leitung |
+| keine Zeilenwerte in Fehlern | Treiber-Option `logServerErrorDetail=false` | Sonst enthalten Fehlermeldungen von PostgreSQL die ganze Zeile (`Failing row contains …`) und gescheiterte Batch-Einträge das INSERT mit allen Werten. Chat-Texte gehören nicht ins Log |
 
 ### 4.7 Docker Compose
 

@@ -47,15 +47,17 @@ public class MessageParser {
      * zur InvalidMessageException, weil derselbe Body beim nächsten Versuch
      * wieder genauso kaputt wäre.
      *
-     * getOriginalMessage statt getMessage: so steht im Log der Grund, aber
-     * kein Ausschnitt aus dem Body und damit kein privater Chat-Text.
+     * Im Grund steht nur die Art des Fehlers, nicht die Meldung von Jackson.
+     * Die zitiert Teile des Bodys, etwa «Unrecognized token 'Hallo'», und
+     * private Chat-Texte gehören nicht ins Log.
      */
     private ChatMessage readJson(byte[] body) throws InvalidMessageException {
         ChatMessage chatMessage;
         try {
             chatMessage = objectMapper.readValue(body, ChatMessage.class);
         } catch (JsonProcessingException exception) {
-            throw new InvalidMessageException("Body is not valid JSON: " + exception.getOriginalMessage(), exception);
+            String errorType = exception.getClass().getSimpleName();
+            throw new InvalidMessageException("Body is not valid JSON (" + errorType + ")", exception);
         } catch (IOException exception) {
             throw new InvalidMessageException("Body could not be read", exception);
         }

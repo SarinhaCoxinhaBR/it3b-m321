@@ -27,6 +27,10 @@ spring:
         reWriteBatchedInserts: true
         # Eine hängende Verbindung blockiert den Listener höchstens 30 s.
         socketTimeout: 30
+        # Keeps row values out of error messages. Without it PostgreSQL errors can
+        # contain the whole row ("Failing row contains ...") and with it the chat text,
+        # and failed batch entries quote the INSERT with all its values.
+        logServerErrorDetail: false
   sql:
     init:
       # schema.sql bei jedem Start ausführen. Es enthält nur IF NOT EXISTS,

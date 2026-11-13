@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -72,6 +73,21 @@ class MessageParserTest {
         Message message = amqpMessage("{kein json");
 
         assertThrows(InvalidMessageException.class, () -> messageParser.parse(message));
+    }
+
+    /**
+     * The reason ends up in the log. It must not quote the body, because the body
+     * is a private chat text. Jackson's own message would contain "Geheimer".
+     */
+    @Test
+    void reasonQuotesNothingFromTheBody() {
+        Message message = amqpMessage("Geheimer Text");
+
+        InvalidMessageException exception = assertThrows(InvalidMessageException.class,
+                () -> messageParser.parse(message));
+
+        String reason = exception.getMessage();
+        assertFalse(reason.contains("Geheimer"), reason);
     }
 
     /** Ein leerer Body ist unlesbar. */
