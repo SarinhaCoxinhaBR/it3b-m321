@@ -52,9 +52,13 @@ class DatabaseOutageIntegrationTest {
     }
 
     /**
-     * Während des Ausfalls hält DatabaseRetry das Paket fest, die Nachrichten
-     * bleiben unbestätigt bei RabbitMQ. Nach dem Ende des Ausfalls gelingt der
-     * nächste Versuch, erst dann folgt das ACK.
+     * Während des Ausfalls hält DatabaseRetry das Paket fest, höchstens fünf
+     * Versuche lang. Danach geht es per NACK zurück in die Queue und kommt
+     * sofort wieder. In beiden Fällen bleiben die Nachrichten bei RabbitMQ.
+     * Die gesperrte Datenbank lehnt Verbindungen sofort ab, eine Runde dauert
+     * hier also nur etwa 8 s: der Test läuft damit auch durch den NACK-Pfad.
+     * Nach dem Ende des Ausfalls gelingt der nächste Versuch, erst dann folgt
+     * das ACK.
      */
     @Test
     void keepsMessagesWhileDatabaseIsDownAndWritesThemAfterwards() throws Exception {

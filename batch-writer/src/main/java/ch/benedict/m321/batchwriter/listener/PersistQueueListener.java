@@ -13,7 +13,9 @@ import org.springframework.amqp.AmqpIOException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.listener.api.ChannelAwareBatchMessageListener;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionException;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -26,8 +28,9 @@ import java.util.List;
  * Die Regel dieser Klasse: jede Nachricht bekommt genau eine Antwort.
  * basicAck, wenn sie gespeichert ist. basicReject ohne Requeue, wenn sie nie
  * gespeichert werden kann; RabbitMQ legt sie dann in chat.dlq. basicNack mit
- * Requeue bei einem unerwarteten Fehler. Weil der Container im Modus MANUAL
- * läuft, bestätigt sonst niemand.
+ * Requeue, wenn die Datenbank nach allen Versuchen nicht erreichbar ist, und
+ * bei einem unerwarteten Fehler. Weil der Container im Modus MANUAL läuft,
+ * bestätigt sonst niemand.
  */
 @Slf4j
 @Component
@@ -54,6 +57,11 @@ public class PersistQueueListener implements ChannelAwareBatchMessageListener {
         List<ReceivedMessage> rejectedMessages;
         try {
             rejectedMessages = messageBatchWriter.write(readableMessages);
+        } catch (DataAccessException | TransactionException exception) {
+            // DatabaseRetry has used up its attempts. Expected during an outage, so no stack trace.
+            log.warn("Database not reachable, returning {} messages to the queue", readableMessages.size());
+            requeueAll(readableMessages, channel);
+            return;
         } catch (RuntimeException exception) {
             log.error("Unexpected error while writing {} messages, returning them to the queue",
                     readableMessages.size(), exception);
@@ -108,9 +116,10 @@ public class PersistQueueListener implements ChannelAwareBatchMessageListener {
     }
 
     /**
-     * Gibt alle Nachrichten an die Queue zurück. Nur für unerwartete Fehler:
-     * ohne diese Antwort blieben sie unbestätigt liegen, bis der Prefetch
-     * voll ist, und der Konsument stünde still.
+     * Gibt alle Nachrichten an die Queue zurück. Nur für eine Datenbank, die
+     * nach allen Versuchen fehlt, und für unerwartete Fehler: ohne diese
+     * Antwort blieben sie unbestätigt liegen, bis der Prefetch voll ist, und
+     * der Konsument stünde still.
      */
     private void requeueAll(List<ReceivedMessage> receivedMessages, Channel channel) {
         for (ReceivedMessage receivedMessage : receivedMessages) {

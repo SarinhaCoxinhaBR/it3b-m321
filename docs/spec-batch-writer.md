@@ -180,16 +180,21 @@ Nachricht über `ON CONFLICT` harmlos bleibt, egal welche Instanz sie bekommt. D
 #### S7: PostgreSQL 15 s weg, 300 Nachrichten kommen an
 
 **Verhalten:** Das Schreiben scheitert mit einem Verbindungsfehler. Der batch-writer wartet
-2 s (`BATCH_WRITER_RETRY_DELAY_MS`) und versucht **dasselbe Paket** erneut, so lange, bis die
-Datenbank wieder antwortet. In dieser Zeit sind die Nachrichten weder bestätigt noch abgelehnt:
-sie liegen sicher als *unacked* bei RabbitMQ. Nichts geht in die DLQ, der Prozess stürzt nicht ab.
-Sobald PostgreSQL wieder läuft, gelingt der nächste Versuch, danach folgt das ACK. Ein Versuch
-dauert höchstens etwa 5 s (3 s Zeitlimit für eine Verbindung plus 2 s Pause), also stehen alle 300
-wenige Sekunden nach dem Neustart von PostgreSQL in der Tabelle, weit unter 90 s.
+2 s (`BATCH_WRITER_RETRY_DELAY_MS`) und versucht **dasselbe Paket** erneut, höchstens
+5 Mal (`BATCH_WRITER_MAX_ATTEMPTS`). In dieser Zeit sind die Nachrichten weder bestätigt noch
+abgelehnt: sie liegen sicher als *unacked* bei RabbitMQ. Antwortet die Datenbank auch beim
+letzten Versuch nicht, gibt der Listener das Paket mit `basicNack` und Requeue an die Queue
+zurück. RabbitMQ stellt es sofort neu zu, und die nächste Runde beginnt. Nichts geht in die DLQ,
+der Prozess stürzt nicht ab. Sobald PostgreSQL wieder läuft, gelingt der nächste Versuch, danach
+folgt das ACK. Ein Versuch dauert höchstens etwa 5 s (3 s Zeitlimit für eine Verbindung plus 2 s
+Pause), also stehen alle 300 wenige Sekunden nach dem Neustart von PostgreSQL in der Tabelle,
+weit unter 90 s.
 **Begründung:** Ein Datenbankausfall ist kein Fehler der Nachricht. Wer in diesem Fall ablehnt,
 verliert Nachrichten oder füllt die DLQ mit einwandfreien Daten. Wer abstürzt, braucht einen
-Neustart. Warten ist die einzige Reaktion, die weder Daten noch Betrieb kostet. Fällt die Instanz
-während des Wartens aus, stellt RabbitMQ die unbestätigten Nachrichten neu zu.
+Neustart. Warten ist die einzige Reaktion, die weder Daten noch Betrieb kostet. Das Limit sorgt
+dafür, dass eine Instanz ein Paket nicht unbegrenzt festhält: nach jeder Runde liegt es wieder in
+der Queue, und eine zweite Instanz kann es übernehmen. Fällt die Instanz während des Wartens aus,
+stellt RabbitMQ die unbestätigten Nachrichten ebenfalls neu zu.
 
 Als «Datenbank weg» gilt jede `DataAccessException` und jede `TransactionException`, **ausser**
 `DataIntegrityViolationException`. Die bedeutet: die Datenbank ist da, lehnt aber die Daten ab
@@ -251,7 +256,7 @@ verständlicher als ein halb gestarteter Dienst.
 
 | PLANUNG.md | Umgesetzt | Grund |
 |---|---|---|
-| 3.6: COMMIT scheitert, dann NACK mit Requeue | Bei Datenbankausfall im selben Thread warten und dasselbe Paket wiederholen | NACK mit Requeue liefert sofort erneut, auch an die andere Instanz. Solange die Datenbank weg ist, entsteht eine Schleife aus Zustellen und Zurückgeben, die nichts gewinnt. Unbestätigt sind die Nachrichten genauso sicher. Der NACK-Pfad bleibt für unerwartete Fehler |
+| 3.6: COMMIT scheitert, dann NACK mit Requeue | Bei Datenbankausfall im selben Thread bis zu 5 Mal warten und dasselbe Paket wiederholen, erst danach NACK mit Requeue | Ein NACK nach jedem einzelnen Fehlschlag liefert sofort erneut und erzeugt eine schnelle Schleife aus Zustellen und Zurückgeben. Die Runden aus 5 Versuchen machen diese Schleife langsam und begrenzen trotzdem, wie lange eine Instanz ein Paket festhält. Der NACK-Pfad gilt auch für unerwartete Fehler |
 | 3.5: `chat.dlq` nach 3 fehlgeschlagenen Versuchen | Dauerhafte Fehler sofort in die DLQ, vorübergehende nie | Der chat-service legt `chat.persist` als klassische Queue an. Einen Zähler wie `x-delivery-limit` gibt es nur bei Quorum-Queues, und die Argumente müssen in beiden Diensten gleich sein. Ein dritter Versuch mit denselben Daten ändert am Ergebnis nichts |
 | 3.7: `room_id` als Fremdschlüssel auf `room` | Kein Fremdschlüssel, keine Tabelle `room` | Räume sind nicht Teil dieser Aufgabe. Ein Fremdschlüssel würde jede Nachricht in einen nicht existierenden Raum in die DLQ schicken |
 
@@ -335,6 +340,7 @@ abweichender Vertrag fällt beim Start auf und nicht erst im Betrieb.
 | `BATCH_WRITER_BATCH_SIZE` | `500` | `.env` | Höchstens so viele Nachrichten pro Paket, zugleich Prefetch |
 | `BATCH_WRITER_BATCH_TIMEOUT_MS` | `200` | `.env` | Spätestens nach dieser Zeit wird ein Paket geschrieben |
 | `BATCH_WRITER_RETRY_DELAY_MS` | `2000` | `.env` | Pause zwischen zwei Versuchen, solange die Datenbank fehlt |
+| `BATCH_WRITER_MAX_ATTEMPTS` | `5` | `.env` | Versuche pro Paket, solange die Datenbank fehlt. Danach `basicNack` mit Requeue |
 
 Die Standardwerte gelten nur beim Start ausserhalb von Docker. Echte Zugangsdaten stehen nur in
 `.env` (in `.gitignore`), im Repository steht `.env.example` mit Beispielwerten.
@@ -403,7 +409,7 @@ Stack und ohne Aufräumen dazwischen.
 | Bestätigung `MANUAL` | `AUTO` | Bei `AUTO` bestätigt der Container unsichtbar nach der Methode, und einzelne Nachrichten eines Pakets lassen sich nicht ablehnen |
 | Unlesbares per `basicReject` in die DLQ | Selbst in `chat.dlq` publizieren | Dafür hat der chat-service die Dead-Letter-Argumente gesetzt. RabbitMQ ergänzt `x-death` mit Grund und Herkunft |
 | Einzelweg nach abgelehntem Paket | Ganzes Paket in die DLQ | Eine kaputte Zeile würde 499 gute mitnehmen |
-| Im Thread warten bei Datenbankausfall | NACK mit Requeue, Absturz | Siehe 3.3 und S7 |
+| Im Thread bis zu 5 Mal warten, dann NACK mit Requeue | Sofort NACK, endlos warten, Absturz | Siehe 3.3 und S7 |
 | Queues selbst deklarieren | Auf den chat-service verlassen | Im frischen Stack existiert `chat.persist` sonst eventuell noch nicht |
 | Body selbst lesen | `Jackson2JsonMessageConverter` mit `__TypeId__` | S5 schickt keinen `__TypeId__`, und der Header nennt eine fremde Klasse |
 | Eigene Kopie von `ChatMessage` | Gemeinsames Modul | Bindet die Dienste aneinander (so im chat-service begründet) |

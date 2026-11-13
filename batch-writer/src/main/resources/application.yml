@@ -47,6 +47,9 @@ batch-writer:
   batch-timeout-ms: ${BATCH_WRITER_BATCH_TIMEOUT_MS:200}
   # Pause zwischen zwei Versuchen, solange die Datenbank nicht erreichbar ist.
   retry-delay-ms: ${BATCH_WRITER_RETRY_DELAY_MS:2000}
+  # Attempts per batch while the database is unreachable. After the last one the
+  # batch goes back to the queue with basicNack and requeue.
+  max-attempts: ${BATCH_WRITER_MAX_ATTEMPTS:5}
 
 logging:
   level:

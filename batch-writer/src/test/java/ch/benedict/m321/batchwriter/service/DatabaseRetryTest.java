@@ -15,7 +15,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class DatabaseRetryTest {
 
-    private final DatabaseRetry databaseRetry = new DatabaseRetry(10);
+    private static final int MAX_ATTEMPTS = 5;
+
+    private final DatabaseRetry databaseRetry = new DatabaseRetry(10, MAX_ATTEMPTS);
 
     /** Zwei Verbindungsfehler, dann Erfolg: genau drei Versuche. */
     @Test
@@ -41,6 +43,19 @@ class DatabaseRetryTest {
         databaseRetry.run(work);
 
         assertEquals(2, work.attempts);
+    }
+
+    /**
+     * The limit: if the database stays unreachable, the last exception goes to the
+     * caller after exactly MAX_ATTEMPTS attempts, so the listener can return the batch.
+     */
+    @Test
+    void givesUpAfterMaxAttempts() {
+        DataAccessException connectionLost = new DataAccessResourceFailureException("Verbindung weg");
+        ScriptedDatabaseWork work = new ScriptedDatabaseWork(100, connectionLost);
+
+        assertThrows(DataAccessResourceFailureException.class, () -> databaseRetry.run(work));
+        assertEquals(MAX_ATTEMPTS, work.attempts);
     }
 
     /**

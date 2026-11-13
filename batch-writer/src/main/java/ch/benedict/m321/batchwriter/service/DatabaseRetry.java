@@ -8,30 +8,40 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.TransactionException;
 
 /**
- * Wiederholt eine Datenbankarbeit, solange die Datenbank nicht erreichbar ist.
+ * Wiederholt eine Datenbankarbeit, solange die Datenbank nicht erreichbar ist,
+ * aber höchstens so oft wie konfiguriert.
  *
  * Ein Datenbankausfall ist kein Fehler der Nachricht (Szenario S7). Wer in
  * diesem Moment ablehnt, verliert Nachrichten oder füllt die Dead-Letter-Queue
  * mit einwandfreien Daten. Wer abstürzt, braucht einen Neustart. Darum wartet
  * der batch-writer hier, und die Nachrichten bleiben so lange unbestätigt und
  * damit sicher bei RabbitMQ.
+ *
+ * Nach dem letzten Versuch geht die Exception an den Aufrufer. Der Listener
+ * gibt das Paket dann mit basicNack und Requeue an die Queue zurück
+ * (PLANUNG.md 3.6). Verloren geht nichts, und läuft eine zweite Instanz,
+ * kann sie das Paket übernehmen.
  */
 @Slf4j
 @Component
 public class DatabaseRetry {
 
     private final long retryDelayMillis;
+    private final int maxAttempts;
 
     /**
-     * Die Pause kommt aus der Konfiguration, damit der Unit-Test mit 10 ms
-     * statt mit 2 s laufen kann.
+     * Pause und Anzahl Versuche kommen aus der Konfiguration, damit der
+     * Unit-Test mit 10 ms statt mit 2 s laufen kann.
      */
-    public DatabaseRetry(@Value("${batch-writer.retry-delay-ms}") long retryDelayMillis) {
+    public DatabaseRetry(@Value("${batch-writer.retry-delay-ms}") long retryDelayMillis,
+                         @Value("${batch-writer.max-attempts}") int maxAttempts) {
         this.retryDelayMillis = retryDelayMillis;
+        this.maxAttempts = maxAttempts;
     }
 
     /**
-     * Führt die Arbeit aus und wiederholt sie, bis sie gelingt.
+     * Führt die Arbeit aus und wiederholt sie, bis sie gelingt oder die
+     * Versuche aufgebraucht sind.
      *
      * Wiederholt wird bei jeder DataAccessException und TransactionException:
      * keine Verbindung, Verbindung abgebrochen, Commit gescheitert. Nicht
@@ -54,8 +64,14 @@ public class DatabaseRetry {
                 // Die äussere Meldung kann die Werte des INSERT enthalten,
                 // also private Chat-Texte, und die gehören nicht ins Log.
                 Throwable cause = exception.getMostSpecificCause();
-                log.warn("Database not reachable (attempt {}), retrying in {} ms: {}",
-                        attempt, retryDelayMillis, cause.toString());
+                // The limit: after the last attempt the caller decides what happens to the batch.
+                if (attempt >= maxAttempts) {
+                    log.warn("Database still not reachable after {} attempts, giving up: {}",
+                            attempt, cause.toString());
+                    throw exception;
+                }
+                log.warn("Database not reachable (attempt {} of {}), retrying in {} ms: {}",
+                        attempt, maxAttempts, retryDelayMillis, cause.toString());
                 pause();
                 attempt = attempt + 1;
             }
