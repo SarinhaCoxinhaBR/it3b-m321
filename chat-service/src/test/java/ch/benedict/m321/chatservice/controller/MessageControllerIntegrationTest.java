@@ -1,5 +1,6 @@
 package ch.benedict.m321.chatservice.controller;
 
+import ch.benedict.m321.chatservice.TestcontainersConfiguration;
 import ch.benedict.m321.chatservice.config.QueueNames;
 import ch.benedict.m321.chatservice.dto.ChatMessage;
 import org.junit.jupiter.api.Test;
@@ -7,13 +8,10 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.RabbitMQContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -27,12 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Testcontainers
+@Import(TestcontainersConfiguration.class)
 class MessageControllerIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static RabbitMQContainer rabbitMq = new RabbitMQContainer("rabbitmq:3.13-management");
 
     @Autowired
     private MockMvc mockMvc;

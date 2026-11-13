@@ -1,5 +1,6 @@
 package ch.benedict.m321.chatservice.service;
 
+import ch.benedict.m321.chatservice.TestcontainersConfiguration;
 import ch.benedict.m321.chatservice.config.QueueNames;
 import ch.benedict.m321.chatservice.dto.ChatMessage;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,11 +14,8 @@ import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.ParameterizedTypeReference;
-import org.testcontainers.containers.RabbitMQContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -31,12 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * und Speicherung.
  */
 @SpringBootTest
-@Testcontainers
+@Import(TestcontainersConfiguration.class)
 class MessagePublisherIntegrationTest {
-
-    @Container
-    @ServiceConnection
-    static RabbitMQContainer rabbitMq = new RabbitMQContainer("rabbitmq:3.13-management");
 
     @Autowired
     private MessagePublisher messagePublisher;
