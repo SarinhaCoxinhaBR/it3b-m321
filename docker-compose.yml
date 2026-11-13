@@ -24,6 +24,7 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      CHAT_SERVICE_REPLAY_BUFFER_SIZE: ${CHAT_SERVICE_REPLAY_BUFFER_SIZE:-5000}
     depends_on:
       rabbitmq:
         condition: service_healthy

@@ -18,6 +18,9 @@ chat-service:
   # Docker sets HOSTNAME to the container id, so every instance gets its own
   # queue. Outside Docker a random id keeps two instances apart.
   instance-id: ${HOSTNAME:${random.uuid}}
+  # Latest messages per room kept in memory for clients that reconnect with
+  # Last-Event-ID. An older Last-Event-ID is answered with 410 Gone.
+  replay-buffer-size: ${CHAT_SERVICE_REPLAY_BUFFER_SIZE:5000}
 
 logging:
   level:
