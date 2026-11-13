@@ -1,11 +1,15 @@
 package ch.benedict.m321.chatservice.config;
 
+import ch.benedict.m321.chatservice.listener.DeliveryQueueListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -14,7 +18,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Legt beim Start alles an, was der Broker braucht.
+ * Legt beim Start alles an, was der Broker braucht, und den Listener, der die
+ * Zustell-Queue dieser Instanz liest.
  *
  * Spring meldet diese Beans beim Verbindungsaufbau an RabbitMQ. Existiert
  * eine Queue schon, passiert nichts — das Anlegen ist wiederholbar.
@@ -87,6 +92,32 @@ public class RabbitConfig {
     public Binding deliveryBinding(@Qualifier("deliveryQueue") Queue deliveryQueue,
                                    FanoutExchange deliveryExchange) {
         return BindingBuilder.bind(deliveryQueue).to(deliveryExchange);
+    }
+
+    /**
+     * Reads the delivery queue of this instance and hands every message to
+     * DeliveryQueueListener.
+     *
+     * One consumer, so the messages reach the clients in the order of the
+     * queue, and the messages of one sender stay in order (S3). AUTO
+     * acknowledges a message after the listener has returned, and the prefetch
+     * of 50 limits how many are unacknowledged at a time (S6). A message that
+     * fails is dropped instead of requeued: requeued, it would reach the
+     * clients that already got it a second time.
+     */
+    @Bean
+    public SimpleMessageListenerContainer deliveryListenerContainer(
+            ConnectionFactory connectionFactory,
+            @Qualifier("deliveryQueue") Queue deliveryQueue,
+            DeliveryQueueListener deliveryQueueListener) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
+        container.setQueues(deliveryQueue);
+        container.setMessageListener(deliveryQueueListener);
+        container.setAcknowledgeMode(AcknowledgeMode.AUTO);
+        container.setPrefetchCount(DELIVERY_PREFETCH);
+        container.setConcurrentConsumers(1);
+        container.setDefaultRequeueRejected(false);
+        return container;
     }
 
     /**
